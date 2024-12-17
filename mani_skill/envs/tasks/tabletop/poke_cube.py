@@ -156,7 +156,22 @@ class PokeCubeEnv(BaseEnv):
                 peghead_to_cube_pos=self.peg_head_pos - self.cube.pose.p,
             )
         return obs
+    
+    def _get_obs_priv(self):
+        obs = dict()
 
+        if self._obs_mode == 'rgb+state':
+            obs.update(
+                cube_pose=self.cube.pose.raw_pose,
+                peg_pose=self.peg.pose.raw_pose,
+                goal_pos=self.peg.pose.p,
+                tcp_to_peg_pos=self.peg.pose.p - self.agent.tcp.pose.p,
+                peg_to_cube_pos=self.cube.pose.p - self.peg.pose.p,
+                cube_to_goal_pos=self.goal_region.pose.p - self.cube.pose.p,
+                peghead_to_cube_pos=self.peg_head_pos - self.cube.pose.p,
+            )
+        return obs
+    
     def evaluate(self):
         is_cube_placed = (
             torch.linalg.norm(
