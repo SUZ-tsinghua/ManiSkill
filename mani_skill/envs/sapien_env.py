@@ -526,6 +526,8 @@ class BaseEnv(gym.Env):
         elif self._obs_mode == "sensor_data":
             # return raw texture data dependent on choice of shader
             obs = self._get_obs_with_sensor_data(info, apply_texture_transforms=False)
+        elif self._obs_mode == "rgb+state":
+            obs = self._get_obs_with_sensor_data_with_priv_obs(info)
         else:
             obs = self._get_obs_with_sensor_data(info)
         return obs
@@ -544,6 +546,10 @@ class BaseEnv(gym.Env):
 
     def _get_obs_extra(self, info: Dict):
         """Get task-relevant extra observations. Usually defined on a task by task basis"""
+        return dict()
+    
+    def _get_obs_priv(self):
+        """Get privileged observations when obs_mode is 'rgb+state'. This is used to train the adaptation module in ppo_adapt"""
         return dict()
 
     def capture_sensor_data(self):
@@ -595,6 +601,16 @@ class BaseEnv(gym.Env):
             extra=self._get_obs_extra(info),
             sensor_param=self.get_sensor_params(),
             sensor_data=self._get_obs_sensor_data(apply_texture_transforms),
+        )
+    
+    def _get_obs_with_sensor_data_with_priv_obs(self, info: Dict, apply_texture_transforms: bool = True) -> dict:
+        """Get the observation with sensor data"""
+        return dict(
+            agent=self._get_obs_agent(),
+            extra=self._get_obs_extra(info),
+            sensor_param=self.get_sensor_params(),
+            sensor_data=self._get_obs_sensor_data(apply_texture_transforms),
+            priv_obs=self._get_obs_priv(),
         )
 
     @property

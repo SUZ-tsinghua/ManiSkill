@@ -29,6 +29,15 @@ def parse_visual_obs_mode_to_struct(obs_mode: str) -> CameraObsTextures:
             normal=False,
             albedo=False,
         )
+    elif obs_mode == "rgb+state":
+        return CameraObsTextures(
+            rgb=True,
+            depth=True,
+            segmentation=False,
+            position=False,
+            normal=False,
+            albedo=False,
+        )
     elif obs_mode == "pointcloud":
         return CameraObsTextures(
             rgb=True,
