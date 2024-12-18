@@ -18,7 +18,7 @@ from torch.utils.tensorboard import SummaryWriter
 # ManiSkill specific imports
 import mani_skill.envs
 from mani_skill.utils import gym_utils
-from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper, FlattenRGBDObservationWrapper
+from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper, FlattenRGBPrivObservationWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
@@ -237,25 +237,39 @@ class Agent(nn.Module):
         super().__init__()
         self.feature_net = NatureCNN(sample_obs=sample_obs)
         # latent_size = np.array(envs.unwrapped.single_observation_space.shape).prod()
-        latent_size = self.feature_net.out_features
+        out_features_size = self.feature_net.out_features
+        latent_size = sample_obs["priv_obs"].shape[-1]
+        latent_head = layer_init(nn.Linear(out_features_size, latent_size))
+        self.latent_net = nn.Sequential(self.feature_net, latent_head)
+        state_size = sample_obs["state"].shape[-1]
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(latent_size, 512)),
+            layer_init(nn.Linear(state_size+latent_size, 256)),
             nn.ReLU(inplace=True),
-            layer_init(nn.Linear(512, 1)),
+            layer_init(nn.Linear(256, 256)),
+            nn.ReLU(inplace=True),
+            layer_init(nn.Linear(256, 256)),
+            nn.ReLU(inplace=True),
+            layer_init(nn.Linear(256, 1)),
         )
         self.actor_mean = nn.Sequential(
-            layer_init(nn.Linear(latent_size, 512)),
+            layer_init(nn.Linear(state_size+latent_size, 256)),
             nn.ReLU(inplace=True),
-            layer_init(nn.Linear(512, np.prod(envs.unwrapped.single_action_space.shape)), std=0.01*np.sqrt(2)),
+            layer_init(nn.Linear(256, 256)),
+            nn.ReLU(inplace=True),
+            layer_init(nn.Linear(256, 256)),
+            nn.ReLU(inplace=True),
+            layer_init(nn.Linear(256, np.prod(envs.unwrapped.single_action_space.shape)), std=0.01*np.sqrt(2)),
         )
         self.actor_logstd = nn.Parameter(torch.ones(1, np.prod(envs.unwrapped.single_action_space.shape)) * -0.5)
     def get_features(self, x):
         return self.feature_net(x)
     def get_value(self, x):
-        x = self.feature_net(x)
+        latent = self.latent_net(x)
+        x = torch.cat([x["state"], latent], dim=1)
         return self.critic(x)
     def get_action(self, x, deterministic=False):
-        x = self.feature_net(x)
+        latent = self.latent_net(x)
+        x = torch.cat([x["state"], latent], dim=1)
         action_mean = self.actor_mean(x)
         if deterministic:
             return action_mean
@@ -264,7 +278,8 @@ class Agent(nn.Module):
         probs = Normal(action_mean, action_std)
         return probs.sample()
     def get_action_and_value(self, x, action=None):
-        x = self.feature_net(x)
+        latent = self.latent_net(x)
+        x = torch.cat([x["state"], latent], dim=1)
         action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
         action_std = torch.exp(action_logstd)
@@ -304,15 +319,15 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    env_kwargs = dict(obs_mode="rgb", render_mode=args.render_mode, sim_backend="gpu")
+    env_kwargs = dict(obs_mode="rgb+state", render_mode=args.render_mode, sim_backend="gpu")
     if args.control_mode is not None:
         env_kwargs["control_mode"] = args.control_mode
     eval_envs = gym.make(args.env_id, num_envs=args.num_eval_envs, reconfiguration_freq=args.eval_reconfiguration_freq, **env_kwargs)
     envs = gym.make(args.env_id, num_envs=args.num_envs if not args.evaluate else 1, reconfiguration_freq=args.reconfiguration_freq, **env_kwargs)
 
-    # rgbd obs mode returns a dict of data, we flatten it so there is just a rgbd key and state key
-    envs = FlattenRGBDObservationWrapper(envs, rgb=True, depth=False, state=args.include_state)
-    eval_envs = FlattenRGBDObservationWrapper(eval_envs, rgb=True, depth=False, state=args.include_state)
+    # rgbd obs mode returns a dict of data, we flatten it so there is just a rgbd key, a state key and a priv_obs key
+    envs = FlattenRGBPrivObservationWrapper(envs, rgb=True, state=args.include_state, priv_obs=True)
+    eval_envs = FlattenRGBPrivObservationWrapper(eval_envs, rgb=True, state=args.include_state, priv_obs=True)
 
     if isinstance(envs.action_space, gym.spaces.Dict):
         envs = FlattenActionSpaceWrapper(envs)
@@ -346,7 +361,8 @@ if __name__ == "__main__":
                 config=config,
                 name=run_name,
                 save_code=True,
-                group=args.wandb_group,
+                group=args.env_id,
+                job_type="PPO rgb",
                 tags=["ppo", "walltime_efficient"]
             )
         writer = SummaryWriter(f"runs/{run_name}")

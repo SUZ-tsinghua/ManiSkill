@@ -119,6 +119,8 @@ class Args:
     """the mini-batch size (computed in runtime)"""
     num_iterations: int = 0
     """the number of iterations (computed in runtime)"""
+    phase_trans_timesteps: int = 0
+    """the timestep to transition from phase 1 to phase 2 (computed in runtime)"""
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
@@ -265,6 +267,8 @@ class Agent(nn.Module):
         self.actor_logstd = nn.Parameter(torch.ones(1, np.prod(envs.unwrapped.single_action_space.shape)) * -0.5)
     def get_features(self, x):
         return self.feature_net(x)
+    def get_latent(self, x):
+        return self.latent_net(x)
     def get_value(self, x):
         latent = self.latent_net(x)
         x = torch.cat([x["state"], latent], dim=1)
@@ -281,7 +285,7 @@ class Agent(nn.Module):
         return probs.sample()
     def get_action_and_value(self, x, action=None):
         latent = self.latent_net(x)
-        x = torch.cat([x["state"], latent], dim=1)
+        x = torch.cat([x["state"], latent.detach()], dim=1)
         action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
         action_std = torch.exp(action_logstd)
@@ -289,6 +293,15 @@ class Agent(nn.Module):
         if action is None:
             action = probs.sample()
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x), latent
+    def get_action_and_value_from_gt(self, x, action=None):
+        x = torch.cat([x["state"], x["priv_obs"]], dim=1)
+        action_mean = self.actor_mean(x)
+        action_logstd = self.actor_logstd.expand_as(action_mean)
+        action_std = torch.exp(action_logstd)
+        probs = Normal(action_mean, action_std)
+        if action is None:
+            action = probs.sample()
+        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
 
 class Logger:
     def __init__(self, log_wandb=False, tensorboard: SummaryWriter = None) -> None:
@@ -303,6 +316,7 @@ class Logger:
 
 if __name__ == "__main__":
     args = tyro.cli(Args)
+    args.phase_trans_timesteps = args.total_timesteps // 2
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
@@ -363,7 +377,8 @@ if __name__ == "__main__":
                 config=config,
                 name=run_name,
                 save_code=True,
-                group=args.wandb_group,
+                group=args.env_id,
+                job_type="PPO adapt",
                 tags=["ppo", "walltime_efficient"]
             )
         writer = SummaryWriter(f"runs/{run_name}")
@@ -442,7 +457,10 @@ if __name__ == "__main__":
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
-                action, logprob, _, value, _ = agent.get_action_and_value(next_obs)
+                if global_step < args.phase_trans_timesteps:
+                    action, logprob, _, value = agent.get_action_and_value_from_gt(next_obs)
+                else:
+                    action, logprob, _, value, _ = agent.get_action_and_value(next_obs)
                 values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
@@ -525,7 +543,11 @@ if __name__ == "__main__":
                 end = start + args.minibatch_size
                 mb_inds = b_inds[start:end]
 
-                _, newlogprob, entropy, newvalue, latent = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
+                if global_step < args.phase_trans_timesteps:
+                    _, newlogprob, entropy, newvalue = agent.get_action_and_value_from_gt(b_obs[mb_inds], b_actions[mb_inds])
+                    latent = agent.get_latent(b_obs[mb_inds])
+                else:
+                    _, newlogprob, entropy, newvalue, latent = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
