@@ -150,6 +150,19 @@ class RollBallEnv(BaseEnv):
             )
         return obs
 
+    def _get_obs_priv(self):
+        obs = dict()
+
+        if self._obs_mode == 'rgb+state':
+            obs.update(
+                goal_pos=self.goal_region.pose.p,
+                ball_pose=self.ball.pose.raw_pose,
+                ball_vel=self.ball.linear_velocity,
+                tcp_to_ball_pos=self.ball.pose.p - self.agent.tcp.pose.p,
+                ball_to_goal_pos=self.goal_region.pose.p - self.ball.pose.p,
+            )
+        return obs
+
     def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
         unit_vec = self.ball.pose.p - self.goal_region.pose.p
         unit_vec = unit_vec / torch.linalg.norm(unit_vec, axis=1, keepdim=True)
