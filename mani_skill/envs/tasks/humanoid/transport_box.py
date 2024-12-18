@@ -232,7 +232,18 @@ class TransportBoxEnv(BaseEnv):
             left_tcp_pose=self.agent.left_tcp.pose.raw_pose,
         )
 
-        if "state" in self.obs_mode:
+        if self._obs_mode in ["state", "state_dict"]:
+            obs.update(
+                box_pose=self.box.pose.raw_pose,
+                right_tcp_to_box_pos=self.box.pose.p - self.agent.right_tcp.pose.p,
+                left_tcp_to_box_pos=self.box.pose.p - self.agent.left_tcp.pose.p,
+            )
+        return obs
+
+    def _get_obs_priv(self):
+        obs = dict()
+
+        if self._obs_mode == 'rgb+state':
             obs.update(
                 box_pose=self.box.pose.raw_pose,
                 right_tcp_to_box_pos=self.box.pose.p - self.agent.right_tcp.pose.p,
