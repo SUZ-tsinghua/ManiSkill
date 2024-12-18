@@ -57,6 +57,51 @@ class FlattenRGBDObservationWrapper(gym.ObservationWrapper):
         elif self.include_depth and not self.include_rgb:
             ret["depth"] = images
         return ret
+    
+
+class FlattenRGBPrivObservationWrapper(gym.ObservationWrapper):
+    """
+    Flattens the "rgb+state" mode observations into a dictionary with three keys: "rgb", "state", "priv_obs"
+
+    Args:
+        rgb (bool): Whether to include rgb images in the observation
+        state (bool): Whether to include state data in the observation
+    """
+
+    def __init__(self, env, rgb=True, state=True, priv_obs=True) -> None:
+        self.base_env: BaseEnv = env.unwrapped
+        super().__init__(env)
+        self.include_rgb = rgb
+        self.include_state = state
+        self.include_priv_obs = priv_obs
+        new_obs = self.observation(self.base_env._init_raw_obs)
+        self.base_env.update_obs_space(new_obs)
+
+    def observation(self, observation: Dict):
+        sensor_data = observation.pop("sensor_data")
+        priv_obs = observation.pop("priv_obs")
+        del observation["sensor_param"]
+        images = []
+        for cam_data in sensor_data.values():
+            if self.include_rgb:
+                images.append(cam_data["rgb"])
+
+        images = torch.concat(images, axis=-1)
+        # flatten the rest of the data which should just be state data
+        observation = common.flatten_state_dict(
+            observation, use_torch=True, device=self.base_env.device
+        )
+        priv_obs = common.flatten_state_dict(
+            priv_obs, use_torch=True, device=self.base_env.device
+        )
+        ret = dict()
+        if self.include_state:
+            ret["state"] = observation
+        if self.include_rgb:
+            ret["rgb"] = images
+        if self.include_priv_obs:
+            ret["priv_obs"] = priv_obs
+        return ret
 
 
 class FlattenObservationWrapper(gym.ObservationWrapper):
