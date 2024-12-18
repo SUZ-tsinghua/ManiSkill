@@ -336,6 +336,7 @@ if __name__ == "__main__":
         print("Running training")
         if args.track:
             import wandb
+            wandb.login(key="4db10e65089ed09dc5cabe7beb5f33439e6dbf64")
             config = vars(args)
             config["env_cfg"] = dict(**env_kwargs, num_envs=args.num_envs, env_id=args.env_id, reward_mode="normalized_dense", env_horizon=max_episode_steps, partial_reset=args.partial_reset)
             config["eval_env_cfg"] = dict(**env_kwargs, num_envs=args.num_eval_envs, env_id=args.env_id, reward_mode="normalized_dense", env_horizon=max_episode_steps, partial_reset=args.partial_reset)
