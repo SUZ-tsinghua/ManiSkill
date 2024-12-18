@@ -93,7 +93,7 @@ class Args:
     """coefficient of the value function"""
     max_grad_norm: float = 0.5
     """the maximum norm for the gradient clipping"""
-    target_kl: float = 0.1
+    target_kl: float = 0.2
     """the target KL divergence threshold"""
     reward_scale: float = 1.0
     """Scale the reward by this factor"""
@@ -102,7 +102,6 @@ class Args:
     save_train_video_freq: Optional[int] = None
     """frequency to save training videos in terms of iterations"""
     finite_horizon_gae: bool = True
-
 
     # to be filled in runtime
     batch_size: int = 0
@@ -123,20 +122,20 @@ class Agent(nn.Module):
         super().__init__()
         self.critic = nn.Sequential(
             layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 256)),
-            nn.Tanh(),
+            nn.ReLU(inplace=True),
             layer_init(nn.Linear(256, 256)),
-            nn.Tanh(),
+            nn.ReLU(inplace=True),
             layer_init(nn.Linear(256, 256)),
-            nn.Tanh(),
+            nn.ReLU(inplace=True),
             layer_init(nn.Linear(256, 1)),
         )
         self.actor_mean = nn.Sequential(
             layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 256)),
-            nn.Tanh(),
+            nn.ReLU(inplace=True),
             layer_init(nn.Linear(256, 256)),
-            nn.Tanh(),
+            nn.ReLU(inplace=True),
             layer_init(nn.Linear(256, 256)),
-            nn.Tanh(),
+            nn.ReLU(inplace=True),
             layer_init(nn.Linear(256, np.prod(envs.single_action_space.shape)), std=0.01*np.sqrt(2)),
         )
         self.actor_logstd = nn.Parameter(torch.ones(1, np.prod(envs.single_action_space.shape)) * -0.5)
@@ -182,7 +181,6 @@ if __name__ == "__main__":
     else:
         run_name = args.exp_name
 
-
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -195,8 +193,9 @@ if __name__ == "__main__":
     env_kwargs = dict(obs_mode="state", render_mode="rgb_array", sim_backend="gpu")
     if args.control_mode is not None:
         env_kwargs["control_mode"] = args.control_mode
-    envs = gym.make(args.env_id, num_envs=args.num_envs if not args.evaluate else 1, reconfiguration_freq=args.reconfiguration_freq, **env_kwargs)
     eval_envs = gym.make(args.env_id, num_envs=args.num_eval_envs, reconfiguration_freq=args.eval_reconfiguration_freq, **env_kwargs)
+    envs = gym.make(args.env_id, num_envs=args.num_envs if not args.evaluate else 1, reconfiguration_freq=args.reconfiguration_freq, **env_kwargs)
+
     if isinstance(envs.action_space, gym.spaces.Dict):
         envs = FlattenActionSpaceWrapper(envs)
         eval_envs = FlattenActionSpaceWrapper(eval_envs)
@@ -243,9 +242,6 @@ if __name__ == "__main__":
     else:
         print("Running evaluation")
 
-    agent = Agent(envs).to(device)
-    optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
-
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
     actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
@@ -265,9 +261,8 @@ if __name__ == "__main__":
     print(f"args.num_iterations={args.num_iterations} args.num_envs={args.num_envs} args.num_eval_envs={args.num_eval_envs}")
     print(f"args.minibatch_size={args.minibatch_size} args.batch_size={args.batch_size} args.update_epochs={args.update_epochs}")
     print(f"####")
-    action_space_low, action_space_high = torch.from_numpy(envs.single_action_space.low).to(device), torch.from_numpy(envs.single_action_space.high).to(device)
-    def clip_action(action: torch.Tensor):
-        return torch.clamp(action.detach(), action_space_low, action_space_high)
+    agent = Agent(envs).to(device)
+    optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     if args.checkpoint:
         agent.load_state_dict(torch.load(args.checkpoint))
@@ -306,7 +301,6 @@ if __name__ == "__main__":
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
             lrnow = frac * args.learning_rate
             optimizer.param_groups[0]["lr"] = lrnow
-
         rollout_time = time.time()
         for step in range(0, args.num_steps):
             global_step += args.num_envs
@@ -321,7 +315,7 @@ if __name__ == "__main__":
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            next_obs, reward, terminations, truncations, infos = envs.step(clip_action(action))
+            next_obs, reward, terminations, truncations, infos = envs.step(action)
             next_done = torch.logical_or(terminations, truncations).to(torch.float32)
             rewards[step] = reward.view(-1) * args.reward_scale
 
@@ -442,9 +436,7 @@ if __name__ == "__main__":
 
             if args.target_kl is not None and approx_kl > args.target_kl:
                 break
-
         update_time = time.time() - update_time
-
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y

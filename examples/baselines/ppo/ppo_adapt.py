@@ -121,6 +121,8 @@ class Args:
     """the number of iterations (computed in runtime)"""
     phase_trans_timesteps: int = 0
     """the timestep to transition from phase 1 to phase 2 (computed in runtime)"""
+    esti_update_epochs: int = 0
+    """the number of epochs to update the estimation loss (computed in runtime)"""
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
@@ -317,6 +319,7 @@ class Logger:
 if __name__ == "__main__":
     args = tyro.cli(Args)
     args.phase_trans_timesteps = args.total_timesteps // 2
+    args.esti_update_epochs = args.update_epochs * 2
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
@@ -537,6 +540,21 @@ if __name__ == "__main__":
         b_inds = np.arange(args.batch_size)
         clipfracs = []
         update_time = time.time()
+
+        for epoch in range(args.esti_update_epochs):
+            np.random.shuffle(b_inds)
+            for start in range(0, args.batch_size, args.minibatch_size):
+                end = start + args.minibatch_size
+                mb_inds = b_inds[start:end]
+                latent = agent.get_latent(b_obs[mb_inds])
+
+                esti_loss = 0.5 * ((latent - b_obs[mb_inds]["priv_obs"]) ** 2).mean() * args.esti_coef
+
+                optimizer.zero_grad()
+                esti_loss.backward()
+                nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
+                optimizer.step()
+
         for epoch in range(args.update_epochs):
             np.random.shuffle(b_inds)
             for start in range(0, args.batch_size, args.minibatch_size):
@@ -545,7 +563,6 @@ if __name__ == "__main__":
 
                 if global_step < args.phase_trans_timesteps:
                     _, newlogprob, entropy, newvalue = agent.get_action_and_value_from_gt(b_obs[mb_inds], b_actions[mb_inds])
-                    latent = agent.get_latent(b_obs[mb_inds])
                 else:
                     _, newlogprob, entropy, newvalue, latent = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
@@ -586,10 +603,7 @@ if __name__ == "__main__":
 
                 entropy_loss = entropy.mean()
 
-                # Estimation loss
-                esti_loss = 0.5 * ((latent - b_obs[mb_inds]["priv_obs"]) ** 2).mean()
-
-                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef + esti_loss * args.esti_coef
+                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
 
                 optimizer.zero_grad()
                 loss.backward()
