@@ -54,8 +54,10 @@ class RollBallEnv(BaseEnv):
 
     @property
     def _default_sensor_configs(self):
-        pose = sapien_utils.look_at(eye=[-0.1, 0.9, 0.3], target=[0.0, 0.0, 0.0])
-        return [CameraConfig("base_camera", pose, 128, 128, np.pi / 2, 0.01, 100)]
+        pose_1 = sapien_utils.look_at(eye=[0.6, -0.6, 0.8], target=[0.0, 0.13, 0.0])
+        pose_2 = sapien_utils.look_at(eye=[-0.6, 1.3, 0.8], target=[0.0, 0.13, 0.0])
+        return [CameraConfig("camera_1", pose_1, 128, 128, 1, 0.01, 100),
+                CameraConfig("camera_2", pose_2, 128, 128, 1, 0.01, 100)]
 
     @property
     def _default_human_render_camera_configs(self):
@@ -143,8 +145,8 @@ class RollBallEnv(BaseEnv):
         if self._obs_mode in ["state", "state_dict"]:
             obs.update(
                 goal_pos=self.goal_region.pose.p,
-                ball_pose=self.ball.pose.raw_pose,
-                ball_vel=self.ball.linear_velocity,
+                ball_pos=self.ball.pose.p,
+                # ball_vel=self.ball.linear_velocity,
                 tcp_to_ball_pos=self.ball.pose.p - self.agent.tcp.pose.p,
                 ball_to_goal_pos=self.goal_region.pose.p - self.ball.pose.p,
             )
@@ -156,8 +158,8 @@ class RollBallEnv(BaseEnv):
         if self._obs_mode == 'rgb+state':
             obs.update(
                 goal_pos=self.goal_region.pose.p,
-                ball_pose=self.ball.pose.raw_pose,
-                ball_vel=self.ball.linear_velocity,
+                ball_pos=self.ball.pose.p,
+                # ball_vel=self.ball.linear_velocity,
                 tcp_to_ball_pos=self.ball.pose.p - self.agent.tcp.pose.p,
                 ball_to_goal_pos=self.goal_region.pose.p - self.ball.pose.p,
             )
