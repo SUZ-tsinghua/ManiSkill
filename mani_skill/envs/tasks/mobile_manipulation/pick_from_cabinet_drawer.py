@@ -26,7 +26,7 @@ CABINET_COLLISION_BIT = 29
 
 @register_env(
     "PickFromCabinetDrawer-v1", 
-    max_episode_steps=100
+    max_episode_steps=200
 )
 class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
     """
@@ -47,7 +47,7 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
     agent: Union[Fetch]
     handle_types = ["prismatic"]
     TRAIN_JSON = (
-        PACKAGE_ASSET_DIR / "partnet_mobility/meta/info_cabinet_drawer_train.json"  # TODO: change this, maybe filter some cabinets that are not suitable for this task
+        PACKAGE_ASSET_DIR / "partnet_mobility/meta/info_pick_from_cabinet_drawer.json"  # change this, maybe filter some cabinets that are not suitable for this task
     )
     
     cube_half_size = 0.02
@@ -103,13 +103,93 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
         self.ground.set_collision_group_bit(
             group=2, bit_idx=CABINET_COLLISION_BIT, bit=1
         )
+    
+    def _load_cabinets(self, joint_types: List[str]):
+        # we sample random cabinet model_ids with numpy as numpy is always deterministic based on seed, regardless of
+        # GPU/CPU simulation backends. This is useful for replaying demonstrations.
+        model_ids = self._batched_episode_rng.choice(self.all_model_ids)
+        link_ids = self._batched_episode_rng.randint(0, 2**31)
+
+        self._cabinets = []
+        handle_links: List[List[Link]] = []
+        handle_links_meshes: List[List[trimesh.Trimesh]] = []
+        for i, model_id in enumerate(model_ids):
+            # partnet-mobility is a dataset source and the ids are the ones we sampled
+            # we provide tools to easily create the articulation builder like so by querying
+            # the dataset source and unique ID
+            cabinet_builder = articulations.get_articulation_builder(
+                self.scene, f"partnet-mobility:{model_id}"
+            )
+            cabinet_builder.set_scene_idxs(scene_idxs=[i])
+            cabinet_builder.initial_pose = sapien.Pose(p=[0, 0, 0], q=[1, 0, 0, 0])
+            cabinet = cabinet_builder.build(name=f"{model_id}-{i}")
+            self.remove_from_state_dict_registry(cabinet)
+            # this disables self collisions by setting the group 2 bit at CABINET_COLLISION_BIT all the same
+            # that bit is also used to disable collision with the ground plane
+            for link in cabinet.links:
+                link.set_collision_group_bit(
+                    group=2, bit_idx=CABINET_COLLISION_BIT, bit=1
+                )
+            self._cabinets.append(cabinet)
+            handle_links.append([])
+            handle_links_meshes.append([])
+
+            # TODO (stao): At the moment code for selecting semantic parts of articulations
+            # is not very simple. Will be improved in the future as we add in features that
+            # support part and mesh-wise annotations in a standard querable format
+            for link, joint in zip(cabinet.links, cabinet.joints):
+                if joint.type[0] in joint_types:
+                    handle_links[-1].append(link)
+                    # save the first mesh in the link object that correspond with a handle
+                    handle_links_meshes[-1].append(
+                        link.generate_mesh(
+                            filter=lambda _, render_shape: "handle"
+                            in render_shape.name,
+                            mesh_name="handle",
+                        )[0]
+                    )
+
+        # we can merge different articulations/links with different degrees of freedoms into a single view/object
+        # allowing you to manage all of them under one object and retrieve data like qpos, pose, etc. all together
+        # and with high performance. Note that some properties such as qpos and qlimits are now padded.
+        self.cabinet = Articulation.merge(self._cabinets, name="cabinet")
+        self.add_to_state_dict_registry(self.cabinet)
+        self.handle_link = Link.merge(
+            # [links[link_ids[i] % len(links)] for i, links in enumerate(handle_links)],
+            [handle_links[0][0] for links in handle_links],
+            name="handle_link",
+        )
+        # store the position of the handle mesh itself relative to the link it is apart of
+        self.handle_link_pos = common.to_tensor(
+            np.array(
+                [
+                    # meshes[link_ids[i] % len(meshes)].bounding_box.center_mass
+                    # for i, meshes in enumerate(handle_links_meshes)
+                    meshes[-1].bounding_box.center_mass
+                    for meshes in handle_links_meshes
+                ]
+            ),
+            device=self.device,
+        )
+
+        self.handle_link_goal = actors.build_sphere(
+            self.scene,
+            radius=0.02,
+            color=[0, 1, 0, 1],
+            name="handle_link_goal",
+            body_type="kinematic",
+            add_collision=False,
+            initial_pose=sapien.Pose(p=[0, 0, 0], q=[1, 0, 0, 0]),
+        )
 
     def _after_reconfigure(self, options):
         super()._after_reconfigure(options)
         self.cube_zs = []
         self.cube_goal_zs = []
+        self.cube_xy_limits = []
         # TODO: check the small gap, by opening the drawer, the cube should be placed inside the drawer
         gap = 0.01
+        shrink = 0.8    # shrink the xy limits, avoid too close to the edge
         # put the cube inside the drawer
         # already test: +cube_half_size makes the cube on the surface of the drawer
         for cabinet in self._cabinets:
@@ -126,15 +206,22 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
                 +self.cube_half_size \
                 +gap   # add a small gap
             )
+            self.cube_xy_limits.append(
+                collision_mesh.bounding_box.bounds[:, :2] * shrink
+            )
         self.cube_zs = common.to_tensor(self.cube_zs, device=self.device)
         self.cube_goal_zs = common.to_tensor(self.cube_goal_zs, device=self.device)
+        self.cube_xy_limits = common.to_tensor(self.cube_xy_limits, device=self.device)
     
     def _initialize_episode(self, env_idx, options):
         super()._initialize_episode(env_idx, options)
         with torch.device(self.device):
             b = len(env_idx)
             xyz = torch.zeros((b, 3))
-            xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
+            # the cube xy should be placed inside the drawer
+            xy_scale = self.cube_xy_limits[env_idx, 1, :] - self.cube_xy_limits[env_idx, 0, :]
+            xy_min = self.cube_xy_limits[env_idx, 0, :]
+            xyz[:, :2] = torch.rand((b, 2)) * xy_scale + xy_min
             xyz[:, 2] = self.cube_zs[env_idx]
             qs = randomization.random_quaternions(b, lock_x=True, lock_y=True)
             self.cube.set_pose(Pose.create_from_pq(xyz, qs))
@@ -156,8 +243,10 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
             "success": open_enough & link_is_static & is_grasped & high_enough,
             "handle_link_pos": handle_link_pos,
             "open_enough": open_enough,
+            "cube_pos": self.cube.pose.p,
             "is_grasped": is_grasped,
             "cube_height": self.cube.pose.p[:, 2],
+            "high_enough": high_enough,
         }
     
     def _get_obs_extra(self, info):
@@ -171,11 +260,37 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
         return obs
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
-        # TODO
-        return super().compute_dense_reward(obs, action, info)
+        # reach handle reward
+        tcp_to_handle_dist = torch.linalg.norm(
+            self.agent.tcp.pose.p - info["handle_link_pos"], axis=1
+        )
+        reach_handle_reward = 1 - torch.tanh(5 * tcp_to_handle_dist)
+        # open reward
+        amount_to_open_left = torch.div(
+            self.target_qpos - self.handle_link.joint.qpos, self.target_qpos
+        )
+        open_reward = 2 * (1 - amount_to_open_left)
+        reach_handle_reward[
+            amount_to_open_left < 0.999
+        ] = 2  # if joint opens even a tiny bit, we don't need reach reward anymore
+        open_reward[info["open_enough"]] = 3  # give max reward here
+        # reach cube reward
+        tcp_to_cube_dist = torch.linalg.norm(
+            self.agent.tcp.pose.p - info["cube_pos"], axis=1
+        )
+        reach_cube_reward = 1 - torch.tanh(5 * tcp_to_cube_dist)
+        reach_cube_reward[info["is_grasped"]] = 2   # once grasped, we don't need reach reward anymore
+        # lift cube reward
+        cube_to_goal_dist = torch.abs(self.cube_goal_zs - info["cube_height"])
+        lift_cube_reward = 1 - torch.tanh(5 * cube_to_goal_dist)
+        lift_cube_reward[info["high_enough"]] = 2
+        # print(open_reward.shape)
+        reward = reach_handle_reward + open_reward + (reach_cube_reward + lift_cube_reward) * info["open_enough"]
+        reward[info["success"]] = 9.0
+        return reward
     
     def compute_normalized_dense_reward(
         self, obs: Any, action: torch.Tensor, info: Dict
     ):
-        max_reward = 5.0    # TODO
+        max_reward = 9.0
         return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward
