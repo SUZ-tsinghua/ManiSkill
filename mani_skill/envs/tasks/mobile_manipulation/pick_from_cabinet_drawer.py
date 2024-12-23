@@ -54,13 +54,13 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
     min_open_frac = 0.75
 
     def __init__(
-        self, 
-        *args, 
+        self,
+        *args,
         robot_uids="fetch",
         robot_init_qpos_noise=0.02,
         reconfiguration_freq=None,
         num_envs=1,
-        **kwargs
+        **kwargs,
     ):
         self.robot_init_qpos_noise = robot_init_qpos_noise
         train_data = load_json(self.TRAIN_JSON)
@@ -156,7 +156,7 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
         self.add_to_state_dict_registry(self.cabinet)
         self.handle_link = Link.merge(
             # [links[link_ids[i] % len(links)] for i, links in enumerate(handle_links)],
-            [handle_links[0][0] for links in handle_links],
+            [links[-1] for links in handle_links],
             name="handle_link",
         )
         # store the position of the handle mesh itself relative to the link it is apart of
@@ -252,7 +252,7 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
     def _get_obs_extra(self, info):
         obs = super()._get_obs_extra(info)
 
-        if "cube" in self._hidden_objects:
+        if "state" in self.obs_mode:
             obs.update(
                 obj_pose=self.cube.pose.raw_pose,
                 tcp_to_obj_pos=self.cube.pose.p - self.agent.tcp.pose.p,
