@@ -26,7 +26,7 @@ CABINET_COLLISION_BIT = 29
 
 @register_env(
     "PickFromCabinetDrawer-v1", 
-    max_episode_steps=200
+    max_episode_steps=300
 )
 class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
     """
@@ -51,7 +51,7 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
     )
     
     cube_half_size = 0.02
-    min_open_frac = 0.75
+    min_open_frac = 0.85
 
     def __init__(
         self,
@@ -189,7 +189,7 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
         self.cube_xy_limits = []
         # TODO: check the small gap, by opening the drawer, the cube should be placed inside the drawer
         gap = 0.01
-        shrink = 0.8    # shrink the xy limits, avoid too close to the edge
+        shrink = 0.5    # shrink the xy limits, avoid too close to the edge
         # put the cube inside the drawer
         # already test: +cube_half_size makes the cube on the surface of the drawer
         for cabinet in self._cabinets:
@@ -214,9 +214,53 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
         self.cube_xy_limits = common.to_tensor(self.cube_xy_limits, device=self.device)
     
     def _initialize_episode(self, env_idx, options):
-        super()._initialize_episode(env_idx, options)
         with torch.device(self.device):
             b = len(env_idx)
+            xy = torch.zeros((b, 3))
+            xy[:, 2] = self.cabinet_zs[env_idx]
+            self.cabinet.set_pose(Pose.create_from_pq(p=xy))
+
+            # initialize robot
+            if self.robot_uids == "fetch":
+                qpos = torch.tensor(
+                    [
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        -np.pi / 4,
+                        0,
+                        np.pi / 4,
+                        0,
+                        np.pi / 3,
+                        0,
+                        0.015,
+                        0.015,
+                    ]
+                )
+                qpos = qpos.repeat(b).reshape(b, -1)
+                dist = randomization.uniform(1.6, 1.8, size=(b,))
+                theta = randomization.uniform(0.9 * torch.pi, 1.1 * torch.pi, size=(b,))
+                xy = torch.zeros((b, 2))
+                xy[:, 0] += torch.cos(theta) * dist
+                xy[:, 1] += torch.sin(theta) * dist
+                qpos[:, :2] = xy
+                noise_ori = randomization.uniform(
+                    -0.05 * torch.pi, 0.05 * torch.pi, size=(b,)
+                )
+                ori = (theta - torch.pi) + noise_ori
+                qpos[:, 2] = ori
+                self.agent.robot.set_qpos(qpos)
+                self.agent.robot.set_pose(sapien.Pose())
+            # close all the cabinets. We know beforehand that lower qlimit means "closed" for these assets.
+            qlimits = self.cabinet.get_qlimits()  # [b, self.cabinet.max_dof, 2])
+            self.cabinet.set_qpos(qlimits[env_idx, :, 0])
+            self.cabinet.set_qvel(self.cabinet.qpos[env_idx] * 0)
+
+            # initialize the cube
             xyz = torch.zeros((b, 3))
             # the cube xy should be placed inside the drawer
             xy_scale = self.cube_xy_limits[env_idx, 1, :] - self.cube_xy_limits[env_idx, 0, :]
@@ -225,6 +269,20 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
             xyz[:, 2] = self.cube_zs[env_idx]
             qs = randomization.random_quaternions(b, lock_x=True, lock_y=True)
             self.cube.set_pose(Pose.create_from_pq(xyz, qs))
+
+            # NOTE (stao): This is a temporary work around for the issue where the cabinet drawers/doors might open
+            # themselves on the first step. It's unclear why this happens on GPU sim only atm.
+            # moreover despite setting qpos/qvel to 0, the cabinets might still move on their own a little bit.
+            # this may be due to oblong meshes.
+            if self.gpu_sim_enabled:
+                self.scene._gpu_apply_all()
+                self.scene.px.gpu_update_articulation_kinematics()
+                self.scene.px.step()
+                self.scene._gpu_fetch_all()
+
+            self.handle_link_goal.set_pose(
+                Pose.create_from_pq(p=self.handle_link_positions(env_idx))
+            )
 
     def evaluate(self):
         # even though self.handle_link is a different link across different articulations
