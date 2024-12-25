@@ -45,6 +45,8 @@ class Args:
     """if toggled, only runs evaluation with the given model checkpoint and saves the evaluation trajectories"""
     checkpoint: Optional[str] = None
     """path to a pretrained checkpoint file to start evaluation/training from"""
+    render_mode: str = "all" # rgb_array
+    """the environment rendering mode"""
 
     # Algorithm specific arguments
     env_id: str = "PickCube-v1"
@@ -190,7 +192,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    env_kwargs = dict(obs_mode="state", render_mode="rgb_array", sim_backend="gpu")
+    env_kwargs = dict(obs_mode="state", render_mode=args.render_mode, sim_backend="gpu")
     if args.control_mode is not None:
         env_kwargs["control_mode"] = args.control_mode
     eval_envs = gym.make(args.env_id, num_envs=args.num_eval_envs, reconfiguration_freq=args.eval_reconfiguration_freq, **env_kwargs)

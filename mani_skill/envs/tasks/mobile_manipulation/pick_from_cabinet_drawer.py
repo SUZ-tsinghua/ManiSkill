@@ -104,6 +104,13 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
             group=2, bit_idx=CABINET_COLLISION_BIT, bit=1
         )
     
+    @property
+    def _default_sensor_configs(self):
+        pose_1 = sapien_utils.look_at(eye=[-0.6, -0.8, 1.8], target=[-0.2, 0.2, 0.0])
+        pose_2 = sapien_utils.look_at(eye=[0.2, -0.8, 1.8], target=[-0.8, 0.2, 0.0])
+        return [CameraConfig("camera_1", pose_1, 128, 128, 0.8, 0.01, 100),
+                CameraConfig("camera_2", pose_2, 128, 128, 1.0, 0.01, 100)]
+
     def _load_cabinets(self, joint_types: List[str]):
         # we sample random cabinet model_ids with numpy as numpy is always deterministic based on seed, regardless of
         # GPU/CPU simulation backends. This is useful for replaying demonstrations.
@@ -310,7 +317,16 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
     def _get_obs_extra(self, info):
         obs = super()._get_obs_extra(info)
 
-        if "state" in self.obs_mode:
+        if self._obs_mode in ["state", "state_dict"]:
+            obs.update(
+                obj_pose=self.cube.pose.raw_pose,
+                tcp_to_obj_pos=self.cube.pose.p - self.agent.tcp.pose.p,
+            )
+        return obs
+
+    def _get_obs_priv(self):
+        obs = dict()
+        if self._obs_mode == 'rgb+state':
             obs.update(
                 obj_pose=self.cube.pose.raw_pose,
                 tcp_to_obj_pos=self.cube.pose.p - self.agent.tcp.pose.p,
@@ -322,6 +338,7 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
         tcp_to_handle_dist = torch.linalg.norm(
             self.agent.tcp.pose.p - info["handle_link_pos"], axis=1
         )
+        # print(self.target_qpos)
         reach_handle_reward = 1 - torch.tanh(5 * tcp_to_handle_dist)
         # open reward
         amount_to_open_left = torch.div(
