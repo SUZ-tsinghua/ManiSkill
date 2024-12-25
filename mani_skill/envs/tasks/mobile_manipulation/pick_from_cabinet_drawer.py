@@ -319,16 +319,16 @@ class PickFromCabinetDrawer(OpenCabinetDrawerEnv):
 
         if self._obs_mode in ["state", "state_dict"]:
             obs.update(
-                obj_pose=self.cube.pose.raw_pose,
+                obj_pos=self.cube.pose.p,
                 tcp_to_obj_pos=self.cube.pose.p - self.agent.tcp.pose.p,
             )
         return obs
 
-    def _get_obs_priv(self):
-        obs = dict()
+    def _get_obs_priv(self, info: Dict):
+        obs = super()._get_obs_priv(info)
         if self._obs_mode == 'rgb+state':
             obs.update(
-                obj_pose=self.cube.pose.raw_pose,
+                obj_pos=self.cube.pose.p,
                 tcp_to_obj_pos=self.cube.pose.p - self.agent.tcp.pose.p,
             )
         return obs

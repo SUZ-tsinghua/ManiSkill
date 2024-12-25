@@ -240,7 +240,7 @@ class TransportBoxEnv(BaseEnv):
             )
         return obs
 
-    def _get_obs_priv(self):
+    def _get_obs_priv(self, info: Dict):
         obs = dict()
 
         if self._obs_mode == 'rgb+state':

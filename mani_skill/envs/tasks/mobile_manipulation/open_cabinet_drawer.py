@@ -325,7 +325,17 @@ class OpenCabinetDrawerEnv(BaseEnv):
             tcp_pose=self.agent.tcp.pose.raw_pose,
         )
 
-        if "state" in self.obs_mode:
+        if self.obs_mode in ["state", "state_dict"]:
+            obs.update(
+                tcp_to_handle_pos=info["handle_link_pos"] - self.agent.tcp.pose.p,
+                target_link_qpos=self.handle_link.joint.qpos,
+                target_handle_pos=info["handle_link_pos"],
+            )
+        return obs
+
+    def _get_obs_priv(self, info: Dict):
+        obs = dict()
+        if self._obs_mode == 'rgb+state':
             obs.update(
                 tcp_to_handle_pos=info["handle_link_pos"] - self.agent.tcp.pose.p,
                 target_link_qpos=self.handle_link.joint.qpos,

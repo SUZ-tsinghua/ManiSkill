@@ -548,7 +548,7 @@ class BaseEnv(gym.Env):
         """Get task-relevant extra observations. Usually defined on a task by task basis"""
         return dict()
     
-    def _get_obs_priv(self):
+    def _get_obs_priv(self, info: Dict):
         """Get privileged observations when obs_mode is 'rgb+state'. This is used to train the adaptation module in ppo_adapt"""
         return dict()
 
@@ -610,7 +610,7 @@ class BaseEnv(gym.Env):
             extra=self._get_obs_extra(info),
             sensor_param=self.get_sensor_params(),
             sensor_data=self._get_obs_sensor_data(apply_texture_transforms),
-            priv_obs=self._get_obs_priv(),
+            priv_obs=self._get_obs_priv(info),
         )
 
     @property
