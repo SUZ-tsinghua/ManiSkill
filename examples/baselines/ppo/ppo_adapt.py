@@ -241,13 +241,10 @@ class NatureCNN(nn.Module):
 class Agent(nn.Module):
     def __init__(self, envs, sample_obs):
         super().__init__()
-        self.feature_net = NatureCNN(sample_obs=sample_obs)
-        # latent_size = np.array(envs.unwrapped.single_observation_space.shape).prod()
-        out_features_size = self.feature_net.out_features
         latent_size = sample_obs["priv_obs"].shape[-1]
-        latent_head = layer_init(nn.Linear(out_features_size, latent_size))
-        self.latent_net = nn.Sequential(self.feature_net, latent_head)
         state_size = sample_obs["state"].shape[-1]
+
+        # init critic and actor first to ensure the params are the same with ppo.py
         self.critic = nn.Sequential(
             layer_init(nn.Linear(state_size+latent_size, 256)),
             nn.ReLU(inplace=True),
@@ -267,13 +264,19 @@ class Agent(nn.Module):
             layer_init(nn.Linear(256, np.prod(envs.unwrapped.single_action_space.shape)), std=0.01*np.sqrt(2)),
         )
         self.actor_logstd = nn.Parameter(torch.ones(1, np.prod(envs.unwrapped.single_action_space.shape)) * -0.5)
+
+        # init latent_net
+        self.feature_net = NatureCNN(sample_obs=sample_obs)
+        out_features_size = self.feature_net.out_features
+        latent_head = layer_init(nn.Linear(out_features_size, latent_size))
+        self.latent_net = nn.Sequential(self.feature_net, latent_head)
+
     def get_features(self, x):
         return self.feature_net(x)
     def get_latent(self, x):
         return self.latent_net(x)
     def get_value(self, x):
-        latent = self.latent_net(x)
-        x = torch.cat([x["state"], latent], dim=1)
+        x = torch.cat([x["state"], x["priv_obs"]], dim=1)
         return self.critic(x)
     def get_action(self, x, deterministic=False):
         latent = self.latent_net(x)
@@ -286,6 +289,7 @@ class Agent(nn.Module):
         probs = Normal(action_mean, action_std)
         return probs.sample()
     def get_action_and_value(self, x, action=None):
+        value = self.get_value(x)
         latent = self.latent_net(x)
         x = torch.cat([x["state"], latent.detach()], dim=1)
         action_mean = self.actor_mean(x)
@@ -294,8 +298,9 @@ class Agent(nn.Module):
         probs = Normal(action_mean, action_std)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x), latent
+        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), value, latent
     def get_action_and_value_from_gt(self, x, action=None):
+        value = self.get_value(x)
         x = torch.cat([x["state"], x["priv_obs"]], dim=1)
         action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
@@ -303,7 +308,7 @@ class Agent(nn.Module):
         probs = Normal(action_mean, action_std)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
+        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), value
 
 class Logger:
     def __init__(self, log_wandb=False, tensorboard: SummaryWriter = None) -> None:

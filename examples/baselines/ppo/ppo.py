@@ -220,7 +220,6 @@ if __name__ == "__main__":
         print("Running training")
         if args.track:
             import wandb
-            wandb.login(key="4db10e65089ed09dc5cabe7beb5f33439e6dbf64")
             config = vars(args)
             config["env_cfg"] = dict(**env_kwargs, num_envs=args.num_envs, env_id=args.env_id, reward_mode="normalized_dense", env_horizon=max_episode_steps, partial_reset=args.partial_reset)
             config["eval_env_cfg"] = dict(**env_kwargs, num_envs=args.num_eval_envs, env_id=args.env_id, reward_mode="normalized_dense", env_horizon=max_episode_steps, partial_reset=False)
@@ -385,6 +384,10 @@ if __name__ == "__main__":
         b_inds = np.arange(args.batch_size)
         clipfracs = []
         update_time = time.time()
+        
+        # shuffle to ensure the data is the same as ppo_adapt.py
+        for epoch in range(args.update_epochs*2):
+            np.random.shuffle(b_inds)
         for epoch in range(args.update_epochs):
             np.random.shuffle(b_inds)
             for start in range(0, args.batch_size, args.minibatch_size):

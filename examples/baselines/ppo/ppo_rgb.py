@@ -235,13 +235,10 @@ class NatureCNN(nn.Module):
 class Agent(nn.Module):
     def __init__(self, envs, sample_obs):
         super().__init__()
-        self.feature_net = NatureCNN(sample_obs=sample_obs)
-        # latent_size = np.array(envs.unwrapped.single_observation_space.shape).prod()
-        out_features_size = self.feature_net.out_features
         latent_size = sample_obs["priv_obs"].shape[-1]
-        latent_head = layer_init(nn.Linear(out_features_size, latent_size))
-        self.latent_net = nn.Sequential(self.feature_net, latent_head)
         state_size = sample_obs["state"].shape[-1]
+
+        # init critic and actor first to ensure the params are the same with ppo.py
         self.critic = nn.Sequential(
             layer_init(nn.Linear(state_size+latent_size, 256)),
             nn.ReLU(inplace=True),
@@ -261,6 +258,13 @@ class Agent(nn.Module):
             layer_init(nn.Linear(256, np.prod(envs.unwrapped.single_action_space.shape)), std=0.01*np.sqrt(2)),
         )
         self.actor_logstd = nn.Parameter(torch.ones(1, np.prod(envs.unwrapped.single_action_space.shape)) * -0.5)
+
+        # init latent_net
+        self.feature_net = NatureCNN(sample_obs=sample_obs)
+        out_features_size = self.feature_net.out_features
+        latent_head = layer_init(nn.Linear(out_features_size, latent_size))
+        self.latent_net = nn.Sequential(self.feature_net, latent_head)
+
     def get_features(self, x):
         return self.feature_net(x)
     def get_value(self, x):
@@ -351,7 +355,6 @@ if __name__ == "__main__":
         print("Running training")
         if args.track:
             import wandb
-            wandb.login(key="4db10e65089ed09dc5cabe7beb5f33439e6dbf64")
             config = vars(args)
             config["env_cfg"] = dict(**env_kwargs, num_envs=args.num_envs, env_id=args.env_id, reward_mode="normalized_dense", env_horizon=max_episode_steps, partial_reset=args.partial_reset)
             config["eval_env_cfg"] = dict(**env_kwargs, num_envs=args.num_eval_envs, env_id=args.env_id, reward_mode="normalized_dense", env_horizon=max_episode_steps, partial_reset=args.partial_reset)
@@ -519,6 +522,10 @@ if __name__ == "__main__":
         b_inds = np.arange(args.batch_size)
         clipfracs = []
         update_time = time.time()
+
+        # shuffle to ensure the data is the same as ppo_adapt.py
+        for epoch in range(args.update_epochs*2):
+            np.random.shuffle(b_inds)
         for epoch in range(args.update_epochs):
             np.random.shuffle(b_inds)
             for start in range(0, args.batch_size, args.minibatch_size):
