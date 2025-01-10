@@ -43,10 +43,10 @@ class StackCubeEnv(BaseEnv):
 
     @property
     def _default_sensor_configs(self):
-        pose1 = sapien_utils.look_at(eye=[0.2, 0, 0.5], target=[-0.1, 0, 0.1])
-        pose2 = sapien_utils.look_at(eye=[0.1, 0.4, 0.5], target=[0.1, 0, 0.1])
-        return [CameraConfig("base_camera1", pose1, 128, 128, np.pi / 2, 0.01, 100),
-                CameraConfig("base_camera2", pose2, 128, 128, np.pi / 2, 0.01, 100)]
+        pose1 = sapien_utils.look_at([0.6, 0.7, 0.6], [0.0, 0.0, 0.35])
+        pose2 = sapien_utils.look_at([0.6, 0.0, 0.3], [-0.1, 0.0, 0.0])
+        return [CameraConfig("base_camera1", pose1, 128, 128, 1, 0.01, 100),
+                CameraConfig("base_camera2", pose2, 128, 128, 1, 0.01, 100)]
 
     @property
     def _default_human_render_camera_configs(self):
@@ -136,8 +136,8 @@ class StackCubeEnv(BaseEnv):
         obs = dict(tcp_pose=self.agent.tcp.pose.raw_pose)
         if self._obs_mode in ["state", "state_dict"]:
             obs.update(
-                # cubeA_pose=self.cubeA.pose.raw_pose,
-                # cubeB_pose=self.cubeB.pose.raw_pose,
+                cubeA_pose=self.cubeA.pose.p,
+                cubeB_pose=self.cubeB.pose.p,
                 tcp_to_cubeA_pos=self.cubeA.pose.p - self.agent.tcp.pose.p,
                 tcp_to_cubeB_pos=self.cubeB.pose.p - self.agent.tcp.pose.p,
                 cubeA_to_cubeB_pos=self.cubeB.pose.p - self.cubeA.pose.p,
@@ -149,8 +149,8 @@ class StackCubeEnv(BaseEnv):
 
         if self._obs_mode == 'rgb+state':
             obs.update(
-                # cubeA_pose=self.cubeA.pose.raw_pose,
-                # cubeB_pose=self.cubeB.pose.raw_pose,
+                cubeA_pose=self.cubeA.pose.p,
+                cubeB_pose=self.cubeB.pose.p,
                 tcp_to_cubeA_pos=self.cubeA.pose.p - self.agent.tcp.pose.p,
                 tcp_to_cubeB_pos=self.cubeB.pose.p - self.agent.tcp.pose.p,
                 cubeA_to_cubeB_pos=self.cubeB.pose.p - self.cubeA.pose.p,
