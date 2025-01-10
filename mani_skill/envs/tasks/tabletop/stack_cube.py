@@ -36,15 +36,17 @@ class StackCubeEnv(BaseEnv):
     agent: Union[Panda, Fetch]
 
     def __init__(
-        self, *args, robot_uids="panda_wristcam", robot_init_qpos_noise=0.02, **kwargs
+        self, *args, robot_uids="panda", robot_init_qpos_noise=0.02, **kwargs
     ):
         self.robot_init_qpos_noise = robot_init_qpos_noise
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     @property
     def _default_sensor_configs(self):
-        pose = sapien_utils.look_at(eye=[0.3, 0, 0.6], target=[-0.1, 0, 0.1])
-        return [CameraConfig("base_camera", pose, 128, 128, np.pi / 2, 0.01, 100)]
+        pose1 = sapien_utils.look_at(eye=[0.2, 0, 0.5], target=[-0.1, 0, 0.1])
+        pose2 = sapien_utils.look_at(eye=[0.1, 0.4, 0.5], target=[0.1, 0, 0.1])
+        return [CameraConfig("base_camera1", pose1, 128, 128, np.pi / 2, 0.01, 100),
+                CameraConfig("base_camera2", pose2, 128, 128, np.pi / 2, 0.01, 100)]
 
     @property
     def _default_human_render_camera_configs(self):
@@ -132,10 +134,23 @@ class StackCubeEnv(BaseEnv):
 
     def _get_obs_extra(self, info: Dict):
         obs = dict(tcp_pose=self.agent.tcp.pose.raw_pose)
-        if "state" in self.obs_mode:
+        if self._obs_mode in ["state", "state_dict"]:
             obs.update(
-                cubeA_pose=self.cubeA.pose.raw_pose,
-                cubeB_pose=self.cubeB.pose.raw_pose,
+                # cubeA_pose=self.cubeA.pose.raw_pose,
+                # cubeB_pose=self.cubeB.pose.raw_pose,
+                tcp_to_cubeA_pos=self.cubeA.pose.p - self.agent.tcp.pose.p,
+                tcp_to_cubeB_pos=self.cubeB.pose.p - self.agent.tcp.pose.p,
+                cubeA_to_cubeB_pos=self.cubeB.pose.p - self.cubeA.pose.p,
+            )
+        return obs
+
+    def _get_obs_priv(self, info: Dict):
+        obs = dict()
+
+        if self._obs_mode == 'rgb+state':
+            obs.update(
+                # cubeA_pose=self.cubeA.pose.raw_pose,
+                # cubeB_pose=self.cubeB.pose.raw_pose,
                 tcp_to_cubeA_pos=self.cubeA.pose.p - self.agent.tcp.pose.p,
                 tcp_to_cubeB_pos=self.cubeB.pose.p - self.agent.tcp.pose.p,
                 cubeA_to_cubeB_pos=self.cubeB.pose.p - self.cubeA.pose.p,

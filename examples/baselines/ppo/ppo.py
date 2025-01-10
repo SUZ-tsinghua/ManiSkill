@@ -45,6 +45,8 @@ class Args:
     """if toggled, only runs evaluation with the given model checkpoint and saves the evaluation trajectories"""
     checkpoint: Optional[str] = None
     """path to a pretrained checkpoint file to start evaluation/training from"""
+    result_file: Optional[str] = None
+    """path to a file to save the evaluation results"""
     render_mode: str = "all" # rgb_array
     """the environment rendering mode"""
 
@@ -290,7 +292,11 @@ if __name__ == "__main__":
                 mean = torch.stack(v).float().mean()
                 if logger is not None:
                     logger.add_scalar(f"eval/{k}", mean, global_step)
+                    # print(f"log eval_{k}_mean={mean}")
                 print(f"eval_{k}_mean={mean}")
+                # if k=="success_once":
+                #     with open(args.result_file, 'a') as f:
+                #         f.write(f"{mean}\n")
             if args.evaluate:
                 break
         if args.save_model and iteration % args.eval_freq == 1:
