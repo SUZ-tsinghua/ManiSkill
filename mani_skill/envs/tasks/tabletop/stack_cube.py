@@ -43,8 +43,8 @@ class StackCubeEnv(BaseEnv):
 
     @property
     def _default_sensor_configs(self):
-        pose1 = sapien_utils.look_at([0.6, 0.7, 0.6], [0.0, 0.0, 0.35])
-        pose2 = sapien_utils.look_at([0.6, 0.0, 0.3], [-0.1, 0.0, 0.0])
+        pose1 = sapien_utils.look_at([0.5, 0.5, 0.5], [0.0, 0.0, 0.1])
+        pose2 = sapien_utils.look_at([-0.45, -0.5, 0.6], [0.05, 0.1, 0.0])
         return [CameraConfig("base_camera1", pose1, 128, 128, 1, 0.01, 100),
                 CameraConfig("base_camera2", pose2, 128, 128, 1, 0.01, 100)]
 

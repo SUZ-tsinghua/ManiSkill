@@ -108,6 +108,14 @@ class LiftPegUprightEnv(BaseEnv):
             )
         return obs
 
+    def _get_obs_priv(self, info: Dict):
+        obs = dict()
+        if self._obs_mode == 'rgb+state':
+            obs.update(
+                obj_pose=self.peg.pose.raw_pose,
+            )
+        return obs
+
     def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
         # rotation reward as cosine similarity between peg direction vectors
         # peg center of mass to end of peg, (1,0,0), rotated by peg pose rotation

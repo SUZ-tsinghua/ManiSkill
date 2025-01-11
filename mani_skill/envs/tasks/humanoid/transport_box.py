@@ -66,9 +66,11 @@ class TransportBoxEnv(BaseEnv):
 
     @property
     def _default_sensor_configs(self):
-        pose = sapien_utils.look_at([1.0, 0.0, 1.6], [0, 0.0, 0.65])
+        pose1 = sapien_utils.look_at([1.0, 0.0, 1.6], [0, 0.0, 0.65])
+        # pose2 = sapien_utils.look_at([0.0, 0.0, 2], [0.2, 0.0, 0.65])
         return [
-            CameraConfig("base_camera", pose=pose, width=128, height=128, fov=np.pi / 3)
+            CameraConfig("base_camera1", pose=pose1, width=128, height=128, fov=np.pi / 3),
+            # CameraConfig("base_camera2", pose=pose2, width=128, height=128, fov=np.pi / 3)
         ]
 
     @property
@@ -306,6 +308,7 @@ class TransportBoxEnv(BaseEnv):
         # Stage 4 let go of the box. Succeeds if success (~box_grasped & box_at_correct_table)
         stage_4_reward = (
             3
+            # + 1 - torch.tanh((self.box.pose.p[:, 2] - 0.750).abs() / 5)
             + (1 - torch.tanh((self.agent.robot.qpos[:, 3] - 1.25).abs())) / 2
             + (1 - torch.tanh((self.agent.robot.qpos[:, 4] + 1.25).abs())) / 2
         )

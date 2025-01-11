@@ -29,10 +29,24 @@
 #     # CUDA_VISIBLE_DEVICES=4 python ppo_rgb.py --env_id=UnitreeG1TransportBox-v1 --num_envs=512 --update_epochs=8 --num_minibatches=32 --total_timesteps=100_000_000 --num-steps=100 --num-eval-steps=200 --num_eval_envs=16 --gamma=0.95 --wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
 # done
 
-# UnitreeG1TransportBox-v1
+# # UnitreeG1TransportBox-v1
+# for seed in 0
+# do
+#     # CUDA_VISIBLE_DEVICES=1 python ppo.py --env_id=StackCube-v1 --num_envs=512 --update_epochs=8 --num_minibatches=32 --total_timesteps=50_000_000 --num-eval-steps=100 --num_eval_envs=16 --wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
+#     CUDA_VISIBLE_DEVICES=1 python ppo_adapt.py --env_id=StackCube-v1 --num_envs=512 --update_epochs=8 --num_minibatches=32 --total_timesteps=50_000_000 --num-eval-steps=100 --num_eval_envs=16 --wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
+#     # CUDA_VISIBLE_DEVICES=0 python ppo_rgb.py --env_id=StackCube-v1 --num_envs=512 --update_epochs=8 --num_minibatches=32 --total_timesteps=50_000_000 --num-eval-steps=100 --num_eval_envs=16 --wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
+# done
+
+# for seed in 0
+# do
+#     # CUDA_VISIBLE_DEVICES=1 python ppo.py --env_id="TwoRobotPickCube-v1" --num_envs=1024 --update_epochs=8 --num_minibatches=32 --total_timesteps=20_000_000 --num-steps=100 --num-eval-steps=100 --num_eval_envs=16 --wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
+#     # CUDA_VISIBLE_DEVICES=1 python ppo_adapt.py --env_id="TwoRobotPickCube-v1" --num_envs=1024 --update_epochs=8 --num_minibatches=32 --total_timesteps=20_000_000 --num-steps=100 --num-eval-steps=100 --num_eval_envs=16 --wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
+#     CUDA_VISIBLE_DEVICES=4 python ppo_rgb.py --env_id="TwoRobotPickCube-v1" --num_envs=1024 --update_epochs=8 --num_minibatches=32 --total_timesteps=20_000_000 --num-steps=100 --num-eval-steps=100 --num_eval_envs=16 #--wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
+# done
+
 for seed in 0
 do
-    CUDA_VISIBLE_DEVICES=1 python ppo.py --env_id=StackCube-v1 --num_envs=512 --update_epochs=8 --num_minibatches=32 --total_timesteps=50_000_000 --num-eval-steps=100 --num_eval_envs=16 --wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
-    # CUDA_VISIBLE_DEVICES=5 python ppo_adapt.py --env_id=StackCube-v1 --num_envs=512 --update_epochs=8 --num_minibatches=32 --total_timesteps=50_000_000 --num-eval-steps=100 --num_eval_envs=16 --wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
-    # CUDA_VISIBLE_DEVICES=0 python ppo_rgb.py --env_id=StackCube-v1 --num_envs=512 --update_epochs=8 --num_minibatches=32 --total_timesteps=50_000_000 --num-eval-steps=100 --num_eval_envs=16 --wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
+    # CUDA_VISIBLE_DEVICES=1 python ppo.py --env_id="LiftPegUpright-v1" --num_envs=1024 --update_epochs=8 --num_minibatches=32 --total_timesteps=50_000_000 --num-steps=100 --num_eval_envs=16 --num-eval-steps=100 --wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
+    CUDA_VISIBLE_DEVICES=5 python ppo_adapt.py --env_id="LiftPegUpright-v1" --num_envs=1024 --update_epochs=8 --num_minibatches=32 --total_timesteps=50_000_000 --num-steps=100 --num_eval_envs=16 --num-eval-steps=100 --wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
+    # CUDA_VISIBLE_DEVICES=4 python ppo_rgb.py --env_id="LiftPegUpright-v1" --num_envs=1024 --update_epochs=8 --num_minibatches=32 --total_timesteps=50_000_000 --num-steps=100 --num_eval_envs=16 --num-eval-steps=100 --wandb_entity=boyuanchen21-tsinghua-university --track --seed=${seed}
 done
